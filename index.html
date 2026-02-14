@@ -3,32 +3,74 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Undemolisher</title>
+    <title>Undemolisher: World Architect Prototype</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main class="game-shell">
-      <header>
-        <h1>Undemolisher</h1>
-        <p>Save the city by repairing all unstable blocks before time runs out.</p>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Undemolisher: World Architect</h1>
+          <p>Rebuild Earth after The Fracture across macro, meso, and micro systems.</p>
+        </div>
+        <div class="mode-switch" role="tablist" aria-label="View modes">
+          <button id="orbitalModeBtn" class="active" aria-selected="true">Orbital Mode</button>
+          <button id="surfaceModeBtn" aria-selected="false">Surface Mode</button>
+        </div>
       </header>
 
-      <section class="hud" aria-label="Game status">
-        <div><strong>Score:</strong> <span id="score">0</span></div>
-        <div><strong>Lives:</strong> <span id="lives">3</span></div>
-        <div><strong>Time:</strong> <span id="time">45</span>s</div>
+      <section class="primary-grid">
+        <aside class="panel left-panel">
+          <h2>Fragment Inventory</h2>
+          <p class="hint">Select a fragment, then click a slot in reconstruction mode.</p>
+          <div id="fragmentInventory" class="fragment-list"></div>
+        </aside>
+
+        <section class="center-column">
+          <section class="energy-panel panel-inline">
+            <label for="energyMeter">Reconstruction Energy</label>
+            <progress id="energyMeter" value="70" max="100"></progress>
+            <span id="energyLabel">70 / 100</span>
+          </section>
+
+          <section id="orbitalView" class="world-view panel">
+            <h2>Orbital Reconstruction</h2>
+            <p id="placementHint">Select a fragment to preview valid connection edges.</p>
+            <div id="orbitalSlots" class="orbital-slots"></div>
+          </section>
+
+          <section id="surfaceView" class="world-view panel hidden">
+            <h2>Surface Recovery</h2>
+            <div class="surface-layout">
+              <div>
+                <h3>Region Overview</h3>
+                <p id="regionSummary">No region selected yet.</p>
+                <div id="overlayLegend" class="overlay-grid"></div>
+              </div>
+              <div>
+                <h3>Social Policies</h3>
+                <div class="policy-buttons">
+                  <button data-policy="supply">Reconnect Supply Lines</button>
+                  <button data-policy="microclimate">Stabilize Microclimate</button>
+                  <button data-policy="species">Reintroduce Species</button>
+                </div>
+                <p id="policyResult" class="hint">Policy outcomes appear here.</p>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <aside class="panel right-panel">
+          <h2>Planet Stability Metrics</h2>
+          <div id="metricsPanel" class="metric-list"></div>
+          <h3>Narrative Quests</h3>
+          <ul id="questList" class="quest-list"></ul>
+        </aside>
       </section>
 
-      <section id="grid" class="grid" aria-label="Repair grid"></section>
-
-      <section class="controls">
-        <button id="start">Start Game</button>
-        <button id="restart" disabled>Restart</button>
-      </section>
-
-      <p id="message" role="status" aria-live="polite">
-        Click unstable blocks (red) to repair them (green).
-      </p>
+      <footer class="status-bar">
+        <p id="globalMessage">Begin by selecting a fragment cluster from the left panel.</p>
+      </footer>
     </main>
 
     <script src="game.js"></script>

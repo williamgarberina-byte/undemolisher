@@ -1,126 +1,207 @@
-const GRID_SIZE = 64;
-const INITIAL_TIME = 45;
-const INITIAL_LIVES = 3;
-const SPAWN_INTERVAL_MS = 700;
+const fragments = [
+  { id: 'F-07', biome: 'temperate_forest', mass: 'medium', civilization: 'recovery', tags: ['forest', 'coastal'] },
+  { id: 'F-12', biome: 'arid_steppe', mass: 'light', civilization: 'survivors', tags: ['desert', 'trade'] },
+  { id: 'F-22', biome: 'tundra', mass: 'heavy', civilization: 'scientists', tags: ['polar', 'energy'] },
+  { id: 'F-31', biome: 'rainforest', mass: 'medium', civilization: 'agrarian', tags: ['tropical', 'biodiversity'] },
+];
 
-const grid = document.getElementById('grid');
-const scoreEl = document.getElementById('score');
-const livesEl = document.getElementById('lives');
-const timeEl = document.getElementById('time');
-const messageEl = document.getElementById('message');
-const startBtn = document.getElementById('start');
-const restartBtn = document.getElementById('restart');
+const slots = [
+  { id: 'S1', expects: ['forest', 'coastal'], climate: 'humid', tectonic: 'stable' },
+  { id: 'S2', expects: ['desert', 'trade'], climate: 'arid', tectonic: 'stable' },
+  { id: 'S3', expects: ['polar', 'energy'], climate: 'cold', tectonic: 'volatile' },
+  { id: 'S4', expects: ['tropical', 'biodiversity'], climate: 'humid', tectonic: 'stable' },
+  { id: 'S5', expects: ['forest', 'trade'], climate: 'temperate', tectonic: 'volatile' },
+  { id: 'S6', expects: ['polar', 'coastal'], climate: 'cold', tectonic: 'stable' },
+];
 
-let blocks = [];
-let score = 0;
-let lives = INITIAL_LIVES;
-let timeLeft = INITIAL_TIME;
-let ticking;
-let spawning;
-let isRunning = false;
+const metrics = {
+  gravity: 52,
+  climate: 44,
+  biosphere: 38,
+  population: 29,
+};
 
-function buildGrid() {
-  grid.innerHTML = '';
-  blocks = [];
-  for (let i = 0; i < GRID_SIZE; i += 1) {
-    const button = document.createElement('button');
-    button.className = 'block';
-    button.type = 'button';
-    button.ariaLabel = `Block ${i + 1}`;
-    button.dataset.state = 'normal';
+const quests = [
+  'Engineer Darya: Align tectonic seams around the equatorial arc.',
+  'Scientist Hale: Restore rainfall corridors between humid fragments.',
+  'Mayor Imani: Reconnect the floating ports for displaced civilians.',
+];
 
-    button.addEventListener('click', () => {
-      if (!isRunning) return;
-      if (button.dataset.state === 'unstable') {
-        button.dataset.state = 'repaired';
-        button.classList.remove('unstable');
-        button.classList.add('repaired');
-        score += 10;
-        scoreEl.textContent = String(score);
-      }
-    });
+let selectedFragment = null;
+let energy = 70;
+let hope = 32;
 
-    blocks.push(button);
-    grid.appendChild(button);
-  }
+const fragmentInventory = document.getElementById('fragmentInventory');
+const orbitalSlots = document.getElementById('orbitalSlots');
+const metricsPanel = document.getElementById('metricsPanel');
+const questList = document.getElementById('questList');
+const globalMessage = document.getElementById('globalMessage');
+const placementHint = document.getElementById('placementHint');
+const energyMeter = document.getElementById('energyMeter');
+const energyLabel = document.getElementById('energyLabel');
+const regionSummary = document.getElementById('regionSummary');
+const overlayLegend = document.getElementById('overlayLegend');
+const policyResult = document.getElementById('policyResult');
+const orbitalModeBtn = document.getElementById('orbitalModeBtn');
+const surfaceModeBtn = document.getElementById('surfaceModeBtn');
+const orbitalView = document.getElementById('orbitalView');
+const surfaceView = document.getElementById('surfaceView');
+
+function statusClass(value) {
+  if (value >= 70) return 'status-good';
+  if (value >= 40) return 'status-warn';
+  return 'status-bad';
 }
 
-function setMessage(text) {
-  messageEl.textContent = text;
-}
-
-function randomBlock() {
-  return blocks[Math.floor(Math.random() * blocks.length)];
-}
-
-function spawnUnstable() {
-  const target = randomBlock();
-  if (target.dataset.state === 'unstable') {
-    lives -= 1;
-    livesEl.textContent = String(lives);
-    if (lives <= 0) {
-      endGame('The city collapsed. You ran out of lives.');
-      return;
-    }
-  }
-
-  target.dataset.state = 'unstable';
-  target.classList.remove('repaired');
-  target.classList.add('unstable');
-}
-
-function tick() {
-  timeLeft -= 1;
-  timeEl.textContent = String(timeLeft);
-
-  if (timeLeft <= 0) {
-    const result = score >= 300
-      ? `You saved the city! Final score: ${score}`
-      : `Time's up. Final score: ${score}. Reach 300 to win.`;
-    endGame(result);
-  }
-}
-
-function clearLoops() {
-  clearInterval(ticking);
-  clearInterval(spawning);
-}
-
-function resetState() {
-  clearLoops();
-  score = 0;
-  lives = INITIAL_LIVES;
-  timeLeft = INITIAL_TIME;
-  scoreEl.textContent = '0';
-  livesEl.textContent = String(INITIAL_LIVES);
-  timeEl.textContent = String(INITIAL_TIME);
-  blocks.forEach((block) => {
-    block.dataset.state = 'normal';
-    block.classList.remove('unstable', 'repaired');
+function renderMetrics() {
+  metricsPanel.innerHTML = '';
+  Object.entries(metrics).forEach(([name, value]) => {
+    const row = document.createElement('div');
+    row.className = 'metric';
+    const label = document.createElement('span');
+    label.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+    const stat = document.createElement('span');
+    stat.className = statusClass(value);
+    stat.textContent = `${value}%`;
+    row.append(label, stat);
+    row.title = `Expanded: ${name} stability index ${value}`;
+    metricsPanel.appendChild(row);
   });
 }
 
-function endGame(text) {
-  clearLoops();
-  isRunning = false;
-  setMessage(text);
-  startBtn.disabled = false;
-  restartBtn.disabled = false;
+function renderQuests() {
+  questList.innerHTML = '';
+  quests.forEach((quest) => {
+    const li = document.createElement('li');
+    li.textContent = quest;
+    questList.appendChild(li);
+  });
 }
 
-function startGame() {
-  resetState();
-  isRunning = true;
-  setMessage('Repair red blocks before they stack up.');
-  startBtn.disabled = true;
-  restartBtn.disabled = false;
-
-  spawnUnstable();
-  ticking = setInterval(tick, 1000);
-  spawning = setInterval(spawnUnstable, SPAWN_INTERVAL_MS);
+function renderFragments() {
+  fragmentInventory.innerHTML = '';
+  fragments.forEach((fragment) => {
+    const btn = document.createElement('button');
+    btn.className = 'fragment-card';
+    if (selectedFragment?.id === fragment.id) btn.classList.add('selected');
+    btn.innerHTML = `${fragment.id} · ${fragment.biome}<small>Mass: ${fragment.mass} | Civ: ${fragment.civilization}</small>`;
+    btn.addEventListener('click', () => {
+      selectedFragment = fragment;
+      renderFragments();
+      renderSlots();
+      placementHint.textContent = `Selected ${fragment.id}. Valid edges glow green; invalid edges glow red with cause.`;
+    });
+    fragmentInventory.appendChild(btn);
+  });
 }
 
-startBtn.addEventListener('click', startGame);
-restartBtn.addEventListener('click', startGame);
+function validatePlacement(slot, fragment) {
+  if (!fragment) return { ok: false, reason: 'No fragment selected.' };
+  if (!slot.expects.some((tag) => fragment.tags.includes(tag))) {
+    return { ok: false, reason: 'Tectonic mismatch' };
+  }
+  if (slot.climate === 'cold' && !fragment.tags.includes('polar')) {
+    return { ok: false, reason: 'Climate incompatibility' };
+  }
+  if (slot.tectonic === 'volatile' && fragment.mass === 'heavy') {
+    return { ok: false, reason: 'Magnetic polarity conflict' };
+  }
+  return { ok: true, reason: 'Fragment can be sealed here.' };
+}
 
-buildGrid();
+function updateEnergy(next) {
+  energy = Math.max(0, Math.min(100, next));
+  energyMeter.value = energy;
+  energyLabel.textContent = `${energy} / 100`;
+}
+
+function renderSlots() {
+  orbitalSlots.innerHTML = '';
+  slots.forEach((slot) => {
+    const cell = document.createElement('button');
+    cell.className = 'slot';
+    cell.type = 'button';
+
+    const result = validatePlacement(slot, selectedFragment);
+    cell.classList.add(result.ok ? 'valid' : 'invalid');
+    cell.innerHTML = `<strong>${slot.id}</strong><br/><small>${result.reason}</small>`;
+    cell.title = result.reason;
+
+    cell.addEventListener('click', () => {
+      if (!selectedFragment) {
+        globalMessage.textContent = 'Select a fragment first.';
+        return;
+      }
+      const placement = validatePlacement(slot, selectedFragment);
+      if (!placement.ok) {
+        globalMessage.textContent = `${selectedFragment.id} failed to connect at ${slot.id}: ${placement.reason}.`;
+        return;
+      }
+
+      cell.classList.add('filled');
+      cell.innerHTML = `<strong>${slot.id}</strong><br/><small>${selectedFragment.id} sealed</small>`;
+      metrics.gravity += 4;
+      metrics.climate += 5;
+      metrics.biosphere += 6;
+      metrics.population += 3;
+      hope += 5;
+      updateEnergy(energy - 8);
+      renderMetrics();
+      regionSummary.textContent = `${selectedFragment.id} restored. Population corridors reopening and biodiversity migration trails stabilizing.`;
+      overlayLegend.innerHTML = `
+        <div class="metric"><span>Temperature Map</span><span class="${statusClass(metrics.climate)}">${metrics.climate}%</span></div>
+        <div class="metric"><span>Rainfall Map</span><span class="${statusClass(metrics.biosphere)}">${metrics.biosphere}%</span></div>
+        <div class="metric"><span>Pollution Map</span><span class="${statusClass(100 - metrics.population)}">${100 - metrics.population}% risk</span></div>
+        <div class="metric"><span>Seismic Stress</span><span class="${statusClass(metrics.gravity)}">${metrics.gravity}% stable</span></div>
+      `;
+      globalMessage.textContent = `Seam healed at ${slot.id}. Hope wave intensity now ${hope}%.`;
+    });
+
+    orbitalSlots.appendChild(cell);
+  });
+}
+
+function setupPolicies() {
+  document.querySelectorAll('[data-policy]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const policy = button.dataset.policy;
+      if (policy === 'supply') {
+        metrics.population += 6;
+        policyResult.textContent = 'Supply lines restored: protests reduced, trade resumes between sky-ports.';
+      }
+      if (policy === 'microclimate') {
+        metrics.climate += 7;
+        metrics.biosphere += 4;
+        policyResult.textContent = 'Microclimate meshes deployed: rainfall corridors normalized.';
+      }
+      if (policy === 'species') {
+        metrics.biosphere += 8;
+        hope += 6;
+        policyResult.textContent = 'Endangered species reintroduced: visible migration trails appeared.';
+      }
+      updateEnergy(energy - 5);
+      renderMetrics();
+      globalMessage.textContent = `Policy enacted (${policy}). Global morale ripple detected.`;
+    });
+  });
+}
+
+function setMode(mode) {
+  const orbital = mode === 'orbital';
+  orbitalView.classList.toggle('hidden', !orbital);
+  surfaceView.classList.toggle('hidden', orbital);
+  orbitalModeBtn.classList.toggle('active', orbital);
+  surfaceModeBtn.classList.toggle('active', !orbital);
+  orbitalModeBtn.setAttribute('aria-selected', String(orbital));
+  surfaceModeBtn.setAttribute('aria-selected', String(!orbital));
+}
+
+orbitalModeBtn.addEventListener('click', () => setMode('orbital'));
+surfaceModeBtn.addEventListener('click', () => setMode('surface'));
+
+renderMetrics();
+renderQuests();
+renderFragments();
+renderSlots();
+setupPolicies();
+updateEnergy(energy);
