@@ -30,6 +30,8 @@ const quests = [
 let selectedFragment = null;
 let energy = 70;
 let hope = 32;
+const sealedSlots = new Set();
+const deployedFragments = new Set();
 
 const fragmentInventory = document.getElementById('fragmentInventory');
 const orbitalSlots = document.getElementById('orbitalSlots');
@@ -84,6 +86,7 @@ function renderFragments() {
     const btn = document.createElement('button');
     btn.className = 'fragment-card';
     if (selectedFragment?.id === fragment.id) btn.classList.add('selected');
+    if (deployedFragments.has(fragment.id)) btn.disabled = true;
     btn.innerHTML = `${fragment.id} · ${fragment.biome}<small>Mass: ${fragment.mass} | Civ: ${fragment.civilization}</small>`;
     btn.addEventListener('click', () => {
       selectedFragment = fragment;
@@ -97,7 +100,7 @@ function renderFragments() {
 
 function validatePlacement(slot, fragment) {
   if (!fragment) return { ok: false, reason: 'No fragment selected.' };
-  if (!slot.expects.some((tag) => fragment.tags.includes(tag))) {
+  if (!slot.expects.every((tag) => fragment.tags.includes(tag))) {
     return { ok: false, reason: 'Tectonic mismatch' };
   }
   if (slot.climate === 'cold' && !fragment.tags.includes('polar')) {
@@ -126,10 +129,24 @@ function renderSlots() {
     cell.classList.add(result.ok ? 'valid' : 'invalid');
     cell.innerHTML = `<strong>${slot.id}</strong><br/><small>${result.reason}</small>`;
     cell.title = result.reason;
+    if (sealedSlots.has(slot.id)) {
+      cell.className = 'slot filled';
+      cell.disabled = true;
+      cell.innerHTML = `<strong>${slot.id}</strong><br/><small>Seam stabilized</small>`;
+      cell.title = 'This slot is already stabilized.';
+    }
 
     cell.addEventListener('click', () => {
       if (!selectedFragment) {
         globalMessage.textContent = 'Select a fragment first.';
+        return;
+      }
+      if (sealedSlots.has(slot.id)) {
+        globalMessage.textContent = `${slot.id} is already stabilized.`;
+        return;
+      }
+      if (energy < 8) {
+        globalMessage.textContent = 'Insufficient reconstruction energy for orbital sealing.';
         return;
       }
       const placement = validatePlacement(slot, selectedFragment);
@@ -138,7 +155,10 @@ function renderSlots() {
         return;
       }
 
+      sealedSlots.add(slot.id);
+      deployedFragments.add(selectedFragment.id);
       cell.classList.add('filled');
+      cell.disabled = true;
       cell.innerHTML = `<strong>${slot.id}</strong><br/><small>${selectedFragment.id} sealed</small>`;
       metrics.gravity += 4;
       metrics.climate += 5;
@@ -155,6 +175,9 @@ function renderSlots() {
         <div class="metric"><span>Seismic Stress</span><span class="${statusClass(metrics.gravity)}">${metrics.gravity}% stable</span></div>
       `;
       globalMessage.textContent = `Seam healed at ${slot.id}. Hope wave intensity now ${hope}%.`;
+      selectedFragment = null;
+      renderFragments();
+      renderSlots();
     });
 
     orbitalSlots.appendChild(cell);
@@ -178,6 +201,10 @@ function setupPolicies() {
         metrics.biosphere += 8;
         hope += 6;
         policyResult.textContent = 'Endangered species reintroduced: visible migration trails appeared.';
+      }
+      if (energy < 5) {
+        globalMessage.textContent = 'Insufficient reconstruction energy for additional policy actions.';
+        return;
       }
       updateEnergy(energy - 5);
       renderMetrics();
